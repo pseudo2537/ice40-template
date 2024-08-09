@@ -21,5 +21,12 @@ module top (
 
 	assign LED1 = !BTN1 ^ !BTN2;
 	assign LED2 = !BTN_N;
+
+	reg [31:0] delay = 32'h0;
+	always @(posedge CLK) begin
+		delay <= delay + 'h1;	
+	end
+
+	assign LED3 = delay[23];
 	//assign LED1 = BTN_N;
 endmodule
