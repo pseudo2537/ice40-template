@@ -1,38 +1,48 @@
-target = ws28xx
+PROJ = example
 
-#pin definitions
-pin_def = icepindef.pcf
-device = up5k
-pack = sg48
+PIN_DEF = icebreaker.pcf
+DEVICE = up5k
+PACKAGE = sg48
 
-#serial upload to target
-upload: $(target).bin
+all: $(PROJ).rpt $(PROJ).bin
+
+%.json: %.v
+	yosys -p 'synth_ice40 -top top -json $@' $<
+
+%.asc: $(PIN_DEF) %.json
+		nextpnr-ice40 --$(DEVICE) --package $(PACKAGE) --asc $@ --top top --pcf $< --json $*.json
+		#/home/b3ll0/fpga/ice40_template/nextpnr/nextpnr-ice40 --$(DEVICE) --package $(PACKAGE) --asc $@ --pcf $< --json $*.json
+
+%.bin: %.asc
+	icepack $< $@
+
+%.rpt: %.asc
+	icetime -d $(DEVICE) -mtr $@ $<
+
+%_tb: %_tb.v %.v
+	iverilog -o $@ $^
+
+%_tb.vcd: %_tb
+	vvp -N $< +vcd=$@
+
+%_syn.v: %.json
+	yosys -p 'read_json $^; write_verilog $@'
+
+%_syntb: %_tb.v %_syn.v
+	iverilog -o $@ $^ `yosys-config --datdir/ice40/cells_sim.v`
+
+%_syntb.vcd: %_syntb
+	vvp -N $< +vcd=$@
+
+prog: $(PROJ).bin
 	iceprog $<
 
-#convert icestorm ascii bitstream to binary
-all: $(target).asc
-	icepack $< $(target).bin
-
-#place and route
-$(target).asc: $(pin_def) $(target).json
-	nextpnr-ice40				\
-		--top $(target)			\
-		--up5k				\
-		--json $(filter-out $<,$^)	\
-		--asc $@			\
-		--pcf $<			\
-		--package $(pack)
-
-#--freq $(freq)			\
-
-#synthesize vcode to json file
-$(target).json: $(target).v
-	yosys -p 'synth_ice40 -json $@' $<
-
-cleanall:
-	rm *.asc *.json *.bin
+sudo-prog: $(PROJ).bin
+	@echo 'Executing prog as root!!!'
+	sudo iceprog $<
 
 clean:
-	rm *.asc *.json
+	rm -f $(PROJ).json $(PROJ).asc $(PROJ).rpt $(PROJ).bin
 
-.PHONY: upload all clean cleanall
+.SECONDARY:
+.PHONY: all prog clean
